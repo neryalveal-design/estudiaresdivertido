@@ -2,14 +2,19 @@ import streamlit as st
 from openai import OpenAI
 from PyPDF2 import PdfReader
 import docx
+import unicodedata
 
-# Configurar cliente de GPT (la API key debe ir en los secrets de Streamlit)
+# Configurar cliente de GPT (requiere que hayas guardado tu API key en Streamlit → Edit secrets)
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.title("🎮 Juego de Lenguaje con GPT")
 st.write("Sube una guía en PDF o Word y genera un quiz interactivo.")
 
-# Función para extraer texto del PDF
+# Función para limpiar y normalizar texto
+def limpiar_texto(texto):
+    return unicodedata.normalize("NFKD", texto).encode("utf-8", "ignore").decode("utf-8")
+
+# Función para extraer texto de un PDF
 def leer_pdf(archivo):
     reader = PdfReader(archivo)
     texto = ""
@@ -17,7 +22,7 @@ def leer_pdf(archivo):
         texto += page.extract_text() + "\n"
     return texto
 
-# Función para extraer texto de Word
+# Función para extraer texto de un Word
 def leer_word(archivo):
     doc = docx.Document(archivo)
     texto = ""
@@ -36,12 +41,19 @@ if archivo:
 
     st.success("✅ Guía cargada correctamente")
 
-    # Prompt base (los estudiantes pueden editar esta parte)
+    # Selección de fragmento (para no enviar todo el documento)
+    if "Vocabulario" in texto_guia:
+        inicio = texto_guia.find("Vocabulario")
+        fragmento = texto_guia[inicio : inicio + 1500]
+    else:
+        fragmento = texto_guia[:1500]
+
+    # Prompt que los estudiantes pueden modificar
     prompt = f"""
-    A partir del siguiente texto de una guía de lenguaje, genera 5 preguntas de opción múltiple
-    con 4 alternativas cada una. Marca la respuesta correcta con un asterisco (*).
+    A partir del siguiente texto de una guía de lenguaje, crea 5 preguntas de opción múltiple
+    con 4 alternativas cada una. Señala la respuesta correcta con un asterisco (*).
     Nivel: estudiantes de enseñanza media.
-    Texto: {texto_guia[:1500]}  # Se limita el texto para no exceder el contexto
+    Texto: {limpiar_texto(fragmento)}
     """
 
     if st.button("Generar preguntas"):
@@ -53,8 +65,7 @@ if archivo:
             )
         
         preguntas = respuesta.choices[0].message.content
-        st.subheader("📝 Preguntas generadas")
+        st.subheader("📝 Preguntas generadas por GPT")
         st.write(preguntas)
 
-        # Aquí los estudiantes pueden luego adaptar las preguntas en formato de quiz interactivo
-        st.info("Ahora edita el prompt para transformar estas preguntas en un juego con puntaje.")
+        st.info("Tip: Edita el prompt para cambiar el tipo de juego (verdadero/falso, crucigrama, adivinanzas, etc.)")
