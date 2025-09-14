@@ -1,20 +1,10 @@
 import streamlit as st
-from openai import OpenAI
 from PyPDF2 import PdfReader
 import docx
-import unicodedata
 
-# Configurar cliente de GPT (requiere que hayas guardado tu API key en Streamlit → Edit secrets)
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
-st.title("🎮 Juego de Lenguaje con GPT")
-st.write("Sube una guía en PDF o Word y genera un quiz interactivo.")
-
-# Función para limpiar y normalizar texto
-def limpiar_texto(texto):
-    return unicodedata.normalize("NFKD", texto).encode("utf-8", "ignore").decode("utf-8")
-
-# Función para extraer texto de un PDF
+# --------------------------
+# Funciones auxiliares
+# --------------------------
 def leer_pdf(archivo):
     reader = PdfReader(archivo)
     texto = ""
@@ -22,7 +12,6 @@ def leer_pdf(archivo):
         texto += page.extract_text() + "\n"
     return texto
 
-# Función para extraer texto de un Word
 def leer_word(archivo):
     doc = docx.Document(archivo)
     texto = ""
@@ -30,9 +19,18 @@ def leer_word(archivo):
         texto += p.text + "\n"
     return texto
 
-# Subida de archivo
-archivo = st.file_uploader("📂 Sube tu guía de lenguaje", type=["pdf", "docx"])
+# --------------------------
+# Interfaz Streamlit
+# --------------------------
+st.set_page_config(page_title="🎮 Generador de Quiz", page_icon="📝", layout="wide")
 
+st.title("🎮 Generador de Quiz a partir de una Guía")
+st.markdown("Sube tu guía en PDF o Word y responde un **quiz de 20 preguntas** basado en su contenido.")
+
+# Subida de archivo
+archivo = st.file_uploader("📂 Sube tu guía de ejercicios", type=["pdf", "docx"])
+
+texto_guia = ""
 if archivo:
     if archivo.type == "application/pdf":
         texto_guia = leer_pdf(archivo)
@@ -40,32 +38,44 @@ if archivo:
         texto_guia = leer_word(archivo)
 
     st.success("✅ Guía cargada correctamente")
+    st.write("Vista previa del contenido:")
+    st.text_area("Contenido de la guía", texto_guia[:1000] + "...", height=200)
 
-    # Selección de fragmento (para no enviar todo el documento)
-    if "Vocabulario" in texto_guia:
-        inicio = texto_guia.find("Vocabulario")
-        fragmento = texto_guia[inicio : inicio + 1500]
-    else:
-        fragmento = texto_guia[:1500]
+    st.info("ℹ️ Como esta versión no usa GPT integrado, puedes generar preguntas con ChatGPT gratuito y pegarlas aquí.")
 
-    # Prompt que los estudiantes pueden modificar
-    prompt = f"""
-    A partir del siguiente texto de una guía de lenguaje, crea 5 preguntas de opción múltiple
-    con 4 alternativas cada una. Señala la respuesta correcta con un asterisco (*).
-    Nivel: estudiantes de enseñanza media.
-    Texto: {limpiar_texto(fragmento)}
-    """
+    # --------------------------
+    # Preguntas predefinidas (ejemplo)
+    # --------------------------
+    preguntas = [
+        {"pregunta": "¿Cuál es la idea principal de la guía que subiste?",
+         "opciones": ["Vocabulario", "Conectores", "Ortografía", "Redacción"],
+         "respuesta": "Vocabulario"},
+        {"pregunta": "¿Qué significa la palabra 'Trascendental'?",
+         "opciones": ["Algo trivial", "De gran importancia", "Un objeto físico", "Algo decorativo"],
+         "respuesta": "De gran importancia"},
+        {"pregunta": "¿Cuál de estos es un conector de oposición?",
+         "opciones": ["Porque", "Pero", "Además", "Por ejemplo"],
+         "respuesta": "Pero"},
+        # ⚠️ Aquí se pueden agregar más preguntas hasta llegar a 20
+    ]
 
-    if st.button("Generar preguntas"):
-        with st.spinner("Generando preguntas con GPT..."):
-            respuesta = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-        
-        preguntas = respuesta.choices[0].message.content
-        st.subheader("📝 Preguntas generadas por GPT")
-        st.write(preguntas)
+    # --------------------------
+    # Interfaz del quiz
+    # --------------------------
+    st.header("📝 Responde el quiz")
+    puntaje = 0
 
-        st.info("Tip: Edita el prompt para cambiar el tipo de juego (verdadero/falso, crucigrama, adivinanzas, etc.)")
+    for i, p in enumerate(preguntas):
+        st.subheader(f"Pregunta {i+1}: {p['pregunta']}")
+        opcion = st.radio("Selecciona tu respuesta:", p["opciones"], key=i)
+        if opcion == p["respuesta"]:
+            puntaje += 1
+
+    if st.button("Mostrar resultado final"):
+        st.success(f"🎉 Tu puntaje final es {puntaje} de {len(preguntas)}")
+        if puntaje == len(preguntas):
+            st.balloons()
+        elif puntaje > len(preguntas) // 2:
+            st.info("👍 ¡Muy bien! Dominas gran parte del contenido.")
+        else:
+            st.warning("👀 Necesitas repasar más la guía.")
